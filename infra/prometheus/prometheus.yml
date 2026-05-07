@@ -1,0 +1,28 @@
+# Prometheus scrape configuration for the ZetAuction local observability
+# stack. The API exposes /metrics directly via the OpenTelemetry
+# Prometheus exporter; the OTel Collector also re-exposes anything else
+# we send to it on :8889 under the "zetauction" namespace.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: local
+    cluster: zetauction-local
+
+scrape_configs:
+  - job_name: zetauction-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8080"]
+        labels:
+          service: zetauction-api
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          service: otel-collector
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

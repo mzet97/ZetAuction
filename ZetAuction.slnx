@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ZetAuction.Api/ZetAuction.Api.csproj" />
+    <Project Path="src/ZetAuction.Application/ZetAuction.Application.csproj" />
+    <Project Path="src/ZetAuction.Domain/ZetAuction.Domain.csproj" />
+    <Project Path="src/ZetAuction.Infrastructure/ZetAuction.Infrastructure.csproj" />
+    <Project Path="src/ZetAuction.Shared/ZetAuction.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ZetAuction.UnitTests/ZetAuction.UnitTests.csproj" />
+    <Project Path="tests/ZetAuction.IntegrationTests/ZetAuction.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,31 @@
+{
+  "stryker-config": {
+    "project": "src/ZetAuction.Domain/ZetAuction.Domain.csproj",
+    "test-projects": [
+      "tests/ZetAuction.UnitTests/ZetAuction.UnitTests.csproj"
+    ],
+    "reporters": [
+      "html",
+      "progress",
+      "cleartext"
+    ],
+    "thresholds": {
+      "high": 80,
+      "low": 70,
+      "break": 60
+    },
+    "mutate": [
+      "src/ZetAuction.Domain/Auctions/**/*.cs",
+      "src/ZetAuction.Domain/Bids/**/*.cs",
+      "src/ZetAuction.Domain/Users/**/*.cs",
+      "!src/ZetAuction.Domain/**/Events/*.cs",
+      "!src/ZetAuction.Domain/**/Exceptions/*.cs",
+      "!src/ZetAuction.Domain/**/*Validator.cs"
+    ],
+    "concurrency": 4,
+    "log-level": "info",
+    "since": {
+      "enabled": false
+    }
+  }
+}

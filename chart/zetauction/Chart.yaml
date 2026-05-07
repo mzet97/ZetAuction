@@ -1,0 +1,15 @@
+apiVersion: v2
+name: zetauction
+description: Distributed auction service with transactional outbox, JWT auth, and OpenTelemetry observability.
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+keywords:
+  - auction
+  - dotnet
+  - cqrs
+home: https://github.com/mzet97/ZetAuction
+maintainers:
+  - name: ZetAuction
+    email: matheus.zeitune.developer@gmail.com
+icon: https://avatars.githubusercontent.com/u/0

@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ZetAuction.Application\ZetAuction.Application.csproj" />
+    <ProjectReference Include="..\ZetAuction.Domain\ZetAuction.Domain.csproj" />
+    <ProjectReference Include="..\ZetAuction.Shared\ZetAuction.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.10" />
+    <!-- Pin the EF Core stack to 9.0.10 across the solution. Npgsql 9.0.4 transitively pulls
+         in 9.0.1, but ZetAuction.Api depends on 9.0.10, so without these explicit refs the
+         publish step ends up with a 9.0.1 Relational.dll that cannot satisfy the 9.0.10
+         binding redirects at runtime. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+    <!-- Brighter v9.9.13 transactional outbox feature.
+         Outbox.PostgreSql writes Message rows; the dispatcher worker
+         (BrighterOutboxDispatcherWorker) reads them via OutstandingMessagesAsync
+         and re-publishes through the in-process CommandProcessor. -->
+    <PackageReference Include="Paramore.Brighter" Version="9.9.13" />
+    <PackageReference Include="Paramore.Brighter.Extensions.DependencyInjection" Version="9.9.13" />
+    <PackageReference Include="Paramore.Brighter.PostgreSql" Version="9.9.13" />
+    <PackageReference Include="Paramore.Brighter.Outbox.PostgreSql" Version="9.9.13" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.10" />
+    <PackageReference Include="StackExchange.Redis" Version="2.9.32" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.12.1" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

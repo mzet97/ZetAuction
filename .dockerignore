@@ -1,0 +1,36 @@
+# Build outputs
+**/bin/
+**/obj/
+**/out/
+
+# NuGet
+**/packages/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test results
+**/TestResults/
+
+# Publish
+publish/

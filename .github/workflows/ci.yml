@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+
+jobs:
+  build-and-test:
+    name: build + test
+    runs-on: ubuntu-latest
+    services:
+      docker:
+        image: docker:24-dind
+        options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: restore
+        run: dotnet restore
+
+      - name: build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: unit tests
+        run: |
+          dotnet test tests/ZetAuction.UnitTests/ZetAuction.UnitTests.csproj \
+            --no-build \
+            --configuration Release \
+            --logger "trx;LogFileName=unit.trx" \
+            --collect "XPlat Code Coverage" \
+            --results-directory ./TestResults
+
+      - name: integration tests (Testcontainers)
+        run: |
+          dotnet test tests/ZetAuction.IntegrationTests/ZetAuction.IntegrationTests.csproj \
+            --no-build \
+            --configuration Release \
+            --logger "trx;LogFileName=integration.trx" \
+            --collect "XPlat Code Coverage" \
+            --results-directory ./TestResults
+
+      - name: upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./TestResults
+
+      - name: publish coverage to step summary
+        if: always()
+        run: |
+          echo "## Test results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          for trx in $(find ./TestResults -name '*.trx'); do
+            echo "- \`$trx\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+  mutation-test:
+    name: stryker (Domain)
+    runs-on: ubuntu-latest
+    # Mutation runs add ~10 minutes; only do them on PR to main to
+    # avoid slowing down feature branches without giving up the
+    # safety net at merge time.
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: install stryker
+        run: dotnet tool install -g dotnet-stryker
+
+      - name: run stryker
+        run: dotnet stryker
+        env:
+          DOTNET_ROOT: /usr/share/dotnet
+
+      - name: upload stryker report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stryker-report
+          path: StrykerOutput/
+
+  lint:
+    name: format check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: dotnet format --verify-no-changes
+        run: dotnet format --verify-no-changes --severity warn
+        continue-on-error: true

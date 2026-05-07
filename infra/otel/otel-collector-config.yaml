@@ -1,0 +1,69 @@
+# OpenTelemetry Collector pipeline for the ZetAuction stack.
+#
+# Receives OTLP from the API (gRPC :4317, HTTP :4318), fans out:
+#   - traces  -> Jaeger (OTLP gRPC)
+#   - metrics -> Prometheus remote-write style scrape (the API also
+#                exposes /metrics directly; this path stays here so other
+#                services without a scrape endpoint can still ship)
+#   - logs    -> Loki (loki exporter)
+#
+# Keep configuration explicit so newcomers can reason about each signal
+# independently.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: local
+        action: upsert
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: zetauction
+    send_timestamps: true
+    metric_expiration: 5m
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/loki]

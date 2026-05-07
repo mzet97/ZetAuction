@@ -1,0 +1,30 @@
+# ZetAuction code owners
+#
+# Lines later in the file take precedence. Each path pattern is followed by one
+# or more owners. Owners are notified for review when a pull request changes a
+# matching path.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything
+*                                      @mzet97
+
+# Domain layer — invariants and business rules
+/src/ZetAuction.Domain/                @mzet97
+
+# Persistence and concurrency primitives
+/src/ZetAuction.Infrastructure/        @mzet97
+
+# Public API surface
+/src/ZetAuction.Api/Endpoints/         @mzet97
+
+# Architectural decisions
+/docs/adr/                             @mzet97
+
+# Security-sensitive paths
+/src/ZetAuction.Infrastructure/Auth/   @mzet97
+/docs/security/                        @mzet97
+
+# CI/CD and supply chain
+/.github/                              @mzet97
+/infra/                                @mzet97

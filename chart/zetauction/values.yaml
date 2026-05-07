@@ -1,0 +1,144 @@
+# Default values for the ZetAuction chart. Override per environment in
+# values-<env>.yaml or via --set on the install/upgrade command.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/mzet97/zetauction
+  pullPolicy: IfNotPresent
+  tag: ""  # falls back to .Chart.AppVersion
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/path: /metrics
+  prometheus.io/port: "8080"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false  # ASP.NET writes to /tmp; keep false unless you mount tmpfs
+  capabilities:
+    drop: [ALL]
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: zetauction.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: zetauction-tls
+      hosts:
+        - zetauction.example.com
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: 1
+    memory: 1Gi
+
+# Horizontal Pod Autoscaler. Disabled by default; turn on once we have
+# the autoscaling/v2 metric server.
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Pod Disruption Budget — keep at least one replica during voluntary
+# disruptions (rolling updates, node drains).
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ServiceMonitor for the kube-prometheus-stack operator. The /metrics
+# endpoint is the same one Prometheus scrapes via static config in
+# docker-compose.
+serviceMonitor:
+  enabled: false
+  interval: 15s
+  scrapeTimeout: 10s
+  labels: {}
+
+# ── Application configuration ─────────────────────────────────────
+config:
+  jwt:
+    issuer: ZetAuction
+    audience: ZetAuctionClient
+    expirationHours: 1
+
+  otel:
+    serviceName: zetauction-api
+    otlpEndpoint: http://otel-collector:4317
+
+  logging:
+    level: Information
+
+# Secrets are NEVER hard-coded here. Either provide a pre-existing
+# secret name via existingSecret, or supply values at install time
+# with --set / --values from a sealed file.
+secrets:
+  existingSecret: ""
+
+  # Used only if existingSecret is empty. Suitable for local /
+  # bootstrap installs; rotate to existingSecret in production.
+  database:
+    connectionString: ""
+  redis:
+    connectionString: ""
+  jwt:
+    # HMAC shared secret. Must be at least 32 characters; rotate
+    # by deploying a new secret and rolling all replicas.
+    secretKey: ""
+
+probes:
+  liveness:
+    path: /health/live
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    failureThreshold: 6
+  readiness:
+    path: /health/ready
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 3
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+
+# Migration job. Bootstraps the database before the deployment goes
+# live. Renders as a Helm pre-install/pre-upgrade hook.
+migrate:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi

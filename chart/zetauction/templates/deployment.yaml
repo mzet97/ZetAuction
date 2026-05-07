@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zetauction.fullname" . }}
+  labels:
+    {{- include "zetauction.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "zetauction.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "zetauction.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "zetauction.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api
+          image: {{ include "zetauction.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: ConnectionStrings__DefaultConnection
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zetauction.secretName" . }}
+                  key: database-connection
+            - name: ConnectionStrings__Redis
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zetauction.secretName" . }}
+                  key: redis-connection
+            - name: Jwt__Issuer
+              value: {{ .Values.config.jwt.issuer | quote }}
+            - name: Jwt__Audience
+              value: {{ .Values.config.jwt.audience | quote }}
+            - name: Jwt__ExpirationHours
+              value: {{ .Values.config.jwt.expirationHours | quote }}
+            - name: Jwt__SecretKey
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "zetauction.secretName" . }}
+                  key: jwt-secret
+            - name: Otel__ServiceName
+              value: {{ .Values.config.otel.serviceName | quote }}
+            - name: Otel__OtlpEndpoint
+              value: {{ .Values.config.otel.otlpEndpoint | quote }}
+            - name: Serilog__MinimumLevel__Default
+              value: {{ .Values.config.logging.level | quote }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

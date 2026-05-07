@@ -1,0 +1,212 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zetauction-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: zetauction
+      POSTGRES_PASSWORD: zetauction
+      POSTGRES_DB: zetauction
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c max_connections=200
+      -c log_min_duration_statement=200
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - zetauction-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zetauction -d zetauction"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: zetauction-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks:
+      - zetauction-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Observability stack ────────────────────────────────────────────
+  # Grafana ←─ Prometheus (metrics) ─── /metrics on api:8080
+  #         ←─ Loki        (logs)    ─── OTel Collector ←─ API OTLP
+  #         ←─ Jaeger      (traces)  ─── OTel Collector ←─ API OTLP
+  #
+  # The API ships traces/metrics/logs via OTLP gRPC to the Collector,
+  # which fans out to each backend. The /metrics endpoint on the API
+  # is also scraped directly by Prometheus, so dashboards keep working
+  # if the Collector is down.
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.76.0
+    container_name: zetauction-jaeger
+    ports:
+      - "16686:16686" # UI
+      - "14268:14268" # legacy thrift
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks:
+      - zetauction-network
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: zetauction-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=24h
+      - --web.enable-lifecycle
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - zetauction-network
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.1
+    container_name: zetauction-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./infra/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    networks:
+      - zetauction-network
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.112.0
+    container_name: zetauction-otel
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./infra/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+      - "8889:8889" # Prom-style scrape
+      - "13133:13133" # health
+    depends_on:
+      - jaeger
+      - loki
+    networks:
+      - zetauction-network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: zetauction-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger
+    networks:
+      - zetauction-network
+    restart: unless-stopped
+
+  # ── Application ───────────────────────────────────────────────────
+  api-migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zetauction-api-migrate
+    command: ["dotnet", "ZetAuction.Api.dll", "--migrate-only"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=zetauction;Username=zetauction;Password=zetauction;Include Error Detail=true
+      ConnectionStrings__Redis: redis:6379
+      Jwt__Issuer: ZetAuction
+      Jwt__Audience: ZetAuctionClient
+      Jwt__ExpirationHours: "1"
+      Jwt__SecretKey: ${JWT_SECRET:-please-override-in-production-with-a-real-secret-of-at-least-32-chars}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - zetauction-network
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zetauction-api
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=zetauction;Username=zetauction;Password=zetauction;Include Error Detail=true
+      ConnectionStrings__Redis: redis:6379
+      Jwt__Issuer: ZetAuction
+      Jwt__Audience: ZetAuctionClient
+      Jwt__ExpirationHours: "1"
+      # Shared HMAC secret. Override via the JWT_SECRET environment
+      # variable in the host shell or your platform's secret manager.
+      Jwt__SecretKey: ${JWT_SECRET:-please-override-in-production-with-a-real-secret-of-at-least-32-chars}
+      Otel__ServiceName: zetauction-api
+      Otel__OtlpEndpoint: http://otel-collector:4317
+      Serilog__MinimumLevel__Default: Information
+      Serilog__MinimumLevel__Override__Microsoft: Warning
+      Serilog__MinimumLevel__Override__System: Warning
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api-migrate:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    networks:
+      - zetauction-network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  loki-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+networks:
+  zetauction-network:
+    driver: bridge

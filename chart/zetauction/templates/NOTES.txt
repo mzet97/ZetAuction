@@ -1,0 +1,32 @@
+{{ include "zetauction.fullname" . }} has been deployed.
+
+1. Wait for the migration job to complete:
+
+   kubectl get jobs -n {{ .Release.Namespace }} -l app.kubernetes.io/component=migrate -w
+
+2. Tail the API logs:
+
+   kubectl logs -n {{ .Release.Namespace }} \
+     -l app.kubernetes.io/instance={{ .Release.Name }} -f
+
+3. Port-forward locally to hit the API:
+
+   kubectl port-forward -n {{ .Release.Namespace }} \
+     svc/{{ include "zetauction.fullname" . }} 8080:{{ .Values.service.port }}
+
+   curl http://localhost:8080/health
+
+{{- if .Values.ingress.enabled }}
+
+4. Public ingress hostnames:
+
+{{- range .Values.ingress.hosts }}
+   - https://{{ .host }}
+{{- end }}
+{{- end }}
+
+Reminders:
+  - Provide JWT signing material via .Values.secrets.jwt.privateKeyPem
+    or pre-create a secret and reference it via .Values.secrets.existingSecret.
+  - Wire .Values.serviceMonitor.enabled=true if running alongside the
+    kube-prometheus-stack operator so Prometheus picks up /metrics.
