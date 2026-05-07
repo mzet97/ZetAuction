@@ -21,7 +21,7 @@ RUN dotnet publish src/ZetAuction.Api/ZetAuction.Api.csproj \
     /p:UseAppHost=false
 
 # ---------- Runtime stage ----------
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 
 # curl is used by HEALTHCHECK; tini gives us a proper PID 1 reaper.
