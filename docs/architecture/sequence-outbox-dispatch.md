@@ -8,56 +8,102 @@ linha — para fechar essa janela, o worker pré-reivindica o
 `MessageId` na tabela `processed_events` antes de publicar. Apenas
 a réplica que ganha o INSERT roda o handler chain (ver ADR-0003).
 
+## Polling loop
+
 ```mermaid
 sequenceDiagram
     autonumber
     participant W as BrighterOutboxDispatcherWorker
     participant Ob as PostgreSqlOutbox
-    participant DB as Postgres (outbox_messages + processed_events)
-    participant CP as IAmACommandProcessor
-    participant H as RequestHandlerAsync<T>
+    participant DB as Postgres
 
-    loop a cada 500ms (ou após cada batch vazio)
-        W->>Ob: OutstandingMessagesAsync(0ms, pageSize=50, page=1)
-        Ob->>DB: SELECT * FROM outbox_messages WHERE Dispatched IS NULL ORDER BY Timestamp LIMIT 50
-        alt batch vazio
-            DB-->>Ob: []
-            Ob-->>W: []
-        else batch tem mensagens
-            DB-->>Ob: Message[...]
-            Ob-->>W: Message[...]
-            loop por mensagem
-                W->>W: clrType = Header.Bag["clr_type"]
-                W->>W: Type.GetType(clrType, throw=false)
-                W->>W: assert IDomainEvent.IsAssignableFrom(eventType)
-                alt tipo resolve e está na whitelist
-                    W->>W: JsonSerializer.Deserialize(Body.Value, eventType)
-                    W->>DB: INSERT INTO processed_events(event_id, processed_at) VALUES(messageId, now()) ON CONFLICT DO NOTHING
-                    alt 1 row inserted (réplica ganhou o claim)
-                        W->>CP: PublishAsync<T>(domainEvent)
-                        CP->>H: HandleAsync(domainEvent)
-                        H-->>CP: ok
-                        CP-->>W: ok
-                    else 0 rows (outra réplica já reivindicou)
-                        W->>W: increment zetauction_outbox_duplicate_skipped
-                        Note over W: pula PublishAsync — handler at-most-once por evento
-                    end
-                    W->>Ob: MarkDispatchedAsync(messageId, now)
-                    Ob->>DB: UPDATE outbox_messages SET Dispatched = now() WHERE MessageId = ...
-                else dispatch falhou (qualquer razão)
-                    W->>W: failures[messageId]++; log warning; increment zetauction_outbox_failed
-                    alt failures[messageId] >= 10
-                        W->>W: log error "exceeded 10 dispatch attempts; dead-lettering"
-                        W->>W: increment zetauction_outbox_dead_lettered
-                        W->>Ob: MarkDispatchedAsync(messageId, now)
-                        Note over W,DB: linha sai do polling, payload preservado para triagem
-                    else failures[messageId] < 10
-                        Note over W,DB: linha permanece Dispatched=NULL — repolada na próxima iteração
-                    end
-                end
-            end
-        end
+    loop a cada 500ms
+        W->>Ob: OutstandingMessagesAsync (pageSize=50)
+        Ob->>DB: SELECT FROM outbox_messages WHERE Dispatched IS NULL LIMIT 50
+        DB-->>Ob: rows
+        Ob-->>W: Message list
+        Note over W: para cada Message, executa o fluxo abaixo
     end
+```
+
+## Por mensagem — caminho de sucesso (réplica vence o claim)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as BrighterOutboxDispatcherWorker
+    participant Ob as PostgreSqlOutbox
+    participant DB as Postgres
+    participant CP as IAmACommandProcessor
+    participant H as Handler
+
+    W->>W: clrType = Header.Bag clr_type
+    W->>W: Type.GetType(clrType)
+    W->>W: validate IDomainEvent.IsAssignableFrom
+    W->>W: JsonSerializer.Deserialize(Body)
+    W->>DB: INSERT INTO processed_events ON CONFLICT DO NOTHING
+    DB-->>W: rows affected = 1
+    W->>CP: PublishAsync(domainEvent)
+    CP->>H: HandleAsync(domainEvent)
+    H-->>CP: ok
+    CP-->>W: ok
+    W->>Ob: MarkDispatchedAsync(messageId)
+    Ob->>DB: UPDATE outbox_messages SET Dispatched = now()
+```
+
+## Por mensagem — réplica perde o claim (idempotência multi-réplica)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as BrighterOutboxDispatcherWorker
+    participant Ob as PostgreSqlOutbox
+    participant DB as Postgres
+
+    W->>DB: INSERT INTO processed_events ON CONFLICT DO NOTHING
+    DB-->>W: rows affected = 0
+    W->>W: increment zetauction_outbox_duplicate_skipped
+    Note over W: pula PublishAsync (outra réplica já entregou)
+    W->>Ob: MarkDispatchedAsync(messageId)
+    Ob->>DB: UPDATE outbox_messages SET Dispatched = now()
+```
+
+## Por mensagem — falha transiente (retry na próxima iteração)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as BrighterOutboxDispatcherWorker
+    participant Ob as PostgreSqlOutbox
+    participant DB as Postgres
+    participant CP as IAmACommandProcessor
+
+    W->>CP: PublishAsync(domainEvent)
+    CP-->>W: throws (handler bug, JSON inválido, etc.)
+    W->>W: failureCount++
+    W->>W: increment zetauction_outbox_failed
+    W->>W: log warning attempt N of 10
+    Note over W,DB: linha permanece Dispatched=NULL — repolada
+```
+
+## Por mensagem — poison message (dead-letter após 10 tentativas)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant W as BrighterOutboxDispatcherWorker
+    participant Ob as PostgreSqlOutbox
+    participant DB as Postgres
+    participant CP as IAmACommandProcessor
+
+    W->>CP: PublishAsync(domainEvent)
+    CP-->>W: throws (10ª vez consecutiva)
+    W->>W: failureCount = 10
+    W->>W: log error exceeded 10 dispatch attempts
+    W->>W: increment zetauction_outbox_dead_lettered
+    W->>Ob: MarkDispatchedAsync(messageId)
+    Ob->>DB: UPDATE outbox_messages SET Dispatched = now()
+    Note over W,DB: linha sai do polling, payload preservado para triagem
 ```
 
 ## Propriedades
@@ -80,11 +126,11 @@ sequenceDiagram
   via write no banco é recusado pelo dispatcher antes do handler.
 - **Poison-message dead-letter.** O worker mantém um
   `ConcurrentDictionary<Guid, int>` em memória. Após 10 tentativas
-  falhas para a mesma `MessageId` (resolução de tipo, JSON inválido,
-  bug do handler), a linha é forçada para `Dispatched = now()` e a
-  métrica `zetauction_outbox_dead_lettered_total` incrementa
-  (alvo de alerta SEV-2). A linha **permanece** em `outbox_messages`
-  com `Dispatched` populado para triagem — só sai do polling.
+  falhas para a mesma `MessageId`, a linha é forçada para
+  `Dispatched = now()` e a métrica
+  `zetauction_outbox_dead_lettered_total` incrementa (alvo de
+  alerta SEV-2). A linha **permanece** em `outbox_messages` com
+  `Dispatched` populado para triagem.
 - **Resiliência a deployment skew.** Um `clr_type` ausente faz o
   dispatch falhar **transiente** até a tentativa 10. Se o assembly
   certo entrar em produção dentro dessa janela, a mensagem drena

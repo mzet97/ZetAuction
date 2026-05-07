@@ -135,7 +135,7 @@ This is a senior-level assessment. We care more about **how you think** and how 
 
 ## Submission
 
-Invite evandro@stablemint.io and sheriton@stablemint.io to a **GitHub repository**
+Invite the assessment reviewers (emails redacted) to a **GitHub repository**
 
 Your repo should include:
 
@@ -147,6 +147,6 @@ Your repo should include:
 
 ## Questions?
 
-If anything in this spec is ambiguous, make a reasonable assumption, document it in your README, and move forward. If you hit a blocker that prevents you from continuing, please email evandro@stablemint.io and we will get back to you as soon as possible.
+If anything in this spec is ambiguous, make a reasonable assumption, document it in your README, and move forward. If you hit a blocker that prevents you from continuing, please email the assessment owner (email redacted) and we will get back to you as soon as possible.
 
 Good luck.
