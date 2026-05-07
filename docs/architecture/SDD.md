@@ -1251,7 +1251,7 @@ Loki, Grafana) esta no compose mas e omitida aqui por brevidade.
 | Banco | Postgres 16 | SQLite (proposta original do assessment) | Mais infra para subir local mas viabiliza correcao multi-instancia |
 | Rate limiting | Redis | Banco | Adiciona infraestrutura, mas melhora performance |
 | Cache | Redis distribuido | Cache local por instancia | Consistencia entre instancias vs simplicidade |
-| Auth | JWT simples | Identity + OpenIddict | Menos features, mas mais simples |
+| Auth | JWT simples | ASP.NET Core Identity completo | Menos features, mas mais simples |
 | Finalizacao | Background job | Event-driven | Atraso de segundos aceitavel para simplicidade |
 
 ### 14.3 Premissas

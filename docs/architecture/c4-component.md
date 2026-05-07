@@ -149,7 +149,13 @@ interceptor escrever `AuctionClosedEvent` no outbox.
 
 `BrighterOutboxDispatcherWorker` faz polling do `PostgreSqlOutbox`
 via `OutstandingMessagesAsync`, deserializa o payload de volta para
-o evento tipado (resolvendo via `Header.Bag["clr_type"]`) e publica
-via `IAmACommandProcessor.PublishAsync<T>`. Brighter v9.9.13 não usa
-`FOR UPDATE SKIP LOCKED` nas linhas — handlers são idempotentes por
-contrato (ADR-0003).
+o evento tipado (resolvendo via `Header.Bag["clr_type"]` e validando
+contra `IDomainEvent.IsAssignableFrom`) e publica via
+`IAmACommandProcessor.PublishAsync<T>`. Brighter v9.9.13 não usa
+`FOR UPDATE SKIP LOCKED` nas linhas — para fechar a janela
+multi-réplica, o worker pré-reivindica o `MessageId` na tabela
+`processed_events` (`INSERT … ON CONFLICT DO NOTHING`) **antes** do
+publish. A réplica que perde o claim pula o handler chain e ainda
+chama `MarkDispatchedAsync`. Mensagens permanentemente falhas são
+dead-lettered (forçadas para `Dispatched`) após 10 tentativas, com
+métrica `zetauction.outbox.dead_lettered` para alerta (ADR-0003).

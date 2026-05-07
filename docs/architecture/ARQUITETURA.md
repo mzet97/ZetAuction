@@ -631,7 +631,7 @@ Entidade propria simples, sem ASP.NET Core Identity completo.
 
 ## Autenticacao
 
-Autenticacao simples via **JWT Bearer**, conforme solicitado no desafio. Nao usa OpenIddict, OAuth2 complexo nem servidor de autorizacao separado.
+Autenticacao simples via **JWT Bearer**, conforme solicitado no desafio. Nao usa OAuth2 complexo nem servidor de autorizacao separado.
 
 ### Implementacao
 
@@ -780,7 +780,7 @@ Leiloes devem ser finalizados ao atingir `EndDate`.
 
 ## Multi-Instancia
 
-- JWT stateless (OpenIddict)
+- JWT stateless HS256
 - Rate limiting via Redis
 - Cache distribuido via Redis
 - Transacoes Postgres para lances
@@ -898,7 +898,7 @@ Consistencia entre instancias via invalidacao explicita. Fallback para banco se 
 
 - Horarios em UTC (`IDateTimeProvider`)
 - Valores monetarios em `decimal`
-- JWT simples (sem Identity/OpenIddict)
+- JWT simples (sem ASP.NET Core Identity)
 - Postgres para transacoes, Redis para coordenacao
 - Soft delete por padrao
 
