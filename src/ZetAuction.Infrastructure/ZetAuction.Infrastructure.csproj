@@ -24,8 +24,8 @@
          Outbox.PostgreSql writes Message rows; the dispatcher worker
          (BrighterOutboxDispatcherWorker) reads them via OutstandingMessagesAsync
          and re-publishes through the in-process CommandProcessor. -->
-    <PackageReference Include="Paramore.Brighter" Version="9.9.13" />
-    <PackageReference Include="Paramore.Brighter.Extensions.DependencyInjection" Version="9.9.13" />
+    <PackageReference Include="Paramore.Brighter" Version="10.6.0" />
+    <PackageReference Include="Paramore.Brighter.Extensions.DependencyInjection" Version="10.6.0" />
     <PackageReference Include="Paramore.Brighter.PostgreSql" Version="9.9.13" />
     <PackageReference Include="Paramore.Brighter.Outbox.PostgreSql" Version="9.9.13" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.10" />
